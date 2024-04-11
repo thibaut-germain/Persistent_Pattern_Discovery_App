@@ -9,6 +9,9 @@ import base64
 import io
 from scipy.stats import norm
 import os
+import base64
+import zipfile
+
 
 from neighborhood import KNN
 from persistence import ThresholdPersistenceMST,BasicPersistence
@@ -62,12 +65,12 @@ def fit_post_processing(mp,connected_components,wlen,alpha,beta,remove_outlier,o
         idx_lst.append(idxs)
     mp = mp.copy()
     mp = ktanh(mp,alpha,beta)
-    pp = PostProcessing(wlen,None,remove_outlier,outlier_threshold/100.0)
+    pp = PostProcessing(wlen,None,remove_outlier,outlier_threshold)
     pp.fit(idx_lst,mp)
     return pp.prediction_birth_list_
 
 def fit_on_submit(mst,mp,persistence,wlen,p_cut,b_cut,alpha,beta,remove_outlier,outlier_threshold):
-    m_b,m_d = persistence[-1,:-1]
+    m_b,m_d = ktanh(persistence[-1,:-1],alpha,beta)
     if (p_cut <= m_d-m_b)*(b_cut>=m_b):
         b_cut_dct = birth_cut_dct(persistence,p_cut,b_cut,alpha,beta)
         connected_components = persistence_with_thresholds(mst,p_cut,b_cut,b_cut_dct,alpha,beta)
@@ -120,7 +123,14 @@ def get_motif_plots(signal,pred,wlen,remove_outlier, outlier_threshold):
             twlen = int(np.mean([len(ts) for ts in dataset])*(1-outlier_threshold))
         else:
             twlen = np.min([len(ts) for ts in dataset])
+
+        #removing occurence smaller than twlen: 
+        if remove_outlier:
+            lengths = lst[:,1]-lst[:,0]
+            keep_idxs = np.where(lengths >= twlen)[0]
+            dataset = [dataset[idx] for idx in keep_idxs]
         lags = get_relative_lag(dataset,twlen)
+
         #index & color
         idx = i%3 +1
         if idx ==1: 
@@ -155,7 +165,7 @@ def update_motif_figure(trace_lst):
 
 
 
-app = Dash(__name__,external_stylesheets=[dbc.themes.LUX])
+app = Dash(__name__,external_stylesheets=[dbc.themes.FLATLY])
 server = app.server
 
 app.layout = dbc.Container(
@@ -166,6 +176,7 @@ app.layout = dbc.Container(
         dcc.Store(id = "mp_store"),
         dcc.Store(id = "persistence_store"),
         dcc.Store(id = "motif_plot_store"),
+        dcc.Store(id="motif_store"),
         dbc.Row([
             dbc.Col([
                 html.Div([
@@ -173,15 +184,15 @@ app.layout = dbc.Container(
                     dbc.Offcanvas(
                         [
                             html.P("This dashboard was designed for interactive and visual discovery of recurrent patterns (also called motifs) of variable length in univariate time series. It interfaces the persistence-based motif discovery algorithm PEPA [1]."),
-                            html.P("As depicted in Figure.1, the workflow of PEPA algortihm can be broken down into three main steps:"),
+                            html.P("As depicted in Figure.1, the workflow of PEPA algorithm can be broken down into three main steps:"),
                             html.Ul([
-                                html.Li(html.P([html.U("(Step 1), From time series to graph:"), " Transforming a time series into a graph where nodes represent subsequences and edges are weighted with the distance between subsequences. The graph is an adaptation of the k-nearest neighbor graph."])),
-                                html.Li(html.P([html.U("(Step 2.a-2.b), Graph clustering:"), " The idendification of clusters is done from a visual summary of the graph through the persistent diagram. The diagram is built such that clusters associated to motifs are located around its top left corner. Further explanation can be found in the section dedicated to graph clustering."])),
+                                html.Li(html.P([html.U("(Step 1), From time series to graph:"), " Transforms a time series into a graph where nodes are subsequences and edges are weighted with the distance between subsequences. The graph is an adaptation of the k-nearest neighbor graph."])),
+                                html.Li(html.P([html.U("(Step 2.a-2.b), Graph clustering:"), " Identifies clusters associated to motifs from a visual summary of the time series based on the persistent diagram of its graph. The diagram is built such that points in the top left corner correspond to motifs. Further explanation can be found in the section dedicated to graph clustering."])),
                                 html.Li(html.P([html.U("(Step 3), From clusters to motifs:"), " Merging temporally adjacent subsequences in each cluster to form the variable length motifs."]))
                             ]),
                             dbc.Card(
                                     [
-                                        dbc.CardImg(src=app.get_asset_url("method_overview.pdf"), style={"max-width": "100%"}, top=True),
+                                        dbc.CardImg(src=app.get_asset_url("method_overview.png"), style={"max-width": "100%"}, top=True),
                                         dbc.CardBody(
                                             html.P("Figure 1: Workflow of PEPA algorithm", className="card-text",style={"text-align" : "center"})
                                         ),
@@ -189,11 +200,11 @@ app.layout = dbc.Container(
                                     style={"width": "100%"},
                             ),
                             html.P(" "),
-                            html.P("The dashboad follows the workflow of PEPA algorithm, it is also decomposed in three main area:"),
+                            html.P("The dashboard follows the workflow of the PEPA algorithm, and it is also decomposed into three main blocks:"),
                             html.Ul([
-                                html.Li(html.P([html.U("Upper:"), " This block is associated to step 1. It is designed to upload a time-series, set parameters dedicated to the graph construction and run the graph construction."])),
-                                html.Li(html.P([html.U("Middle-left:")," This block is associated with step 2.a & 2.b. It gives control over the clustering algorithm and it provides feedbacks to refined the clusters."])),
-                                html.Li(html.P([html.U("Middle-right & Lower:"), " These two block are associated to the step 3. The lower block displays the signal and highlights the motifs once discovered. The middle-right block displays selected motifs individualy."])),
+                                html.Li(html.P([html.U("Upper:"), " This block is associated with step 1. It is designed to upload a time-series, set parameters dedicated to the graph construction, and run the graph construction."])),
+                                html.Li(html.P([html.U("Middle-left:")," This block is associated with step 2.a & 2.b. It gives control over the clustering algorithm, and it provides feedback on ways to refine the clusters."])),
+                                html.Li(html.P([html.U("Middle-right & Lower:"),  " These two blocks are associated with step 3. The lower block displays the signal and highlights the discovered motifs. The middle-right block displays selected motifs individually."])),
                                 
                             ]),
                             html.P(" "),
@@ -202,16 +213,16 @@ app.layout = dbc.Container(
                                 [
                                     dbc.AccordionItem(
                                         [
-                                            html.P("Steps to build the graph from a time series are presented in this section. The nodes of the graph correspond to overlapping subsequences of a time series and they all have the same length (called window length). Each nodes is connected to its K nearest neighobrs according to a distance between subsequences. The window length, the number of neighbors and the distance between subsequences are parameters defined by the user. The block inputs form must be fill from left to right with the following procedure:"),
+                                            html.P("Steps to build the graph from a time series are presented in this section. The graph nodes correspond to overlapping subsequences of a time series, and all have the same length (called window length). Each node is connected to its K nearest neighbors according to the distance between subsequences. The user defines the window length, the number of neighbors, and the distance between subsequences. The block inputs form must be filled out from left to right using the following procedure:"),
                                             html.Ol([
-                                                html.Li(html.P([html.U("Upload a time series:"), " You must drag and drop or selrct a file. The file should correspond to an univariate time series. It must be a one column file in .txt or .csv format with samples separeted with comas (\",\"). Once the file is uploaded, the signal will be displayed in the lower block. Each time you upload a new time series, all parameters of the dashboard will be set to their default value."])),
-                                                html.Li(html.P([html.U("Set window length:"), " The window length corresponds to the subquence length. It is an integer that specifies the number of samples within a subsequence. It is recommended to set it to the length of the smallest expected motif. The length of motifs discovered will range approximatly between 50% and 150% of the window length. "])),
-                                                html.Li(html.P([html.U("Set the number of neighbor:"), " This parameters specifies the number of connections from a node to its nearest neighbors. A large number of neighbors helps to connected similar subsequences together however it slows down the running time. It is an integer and it is recommended to set it to 5 or 10."])),
-                                                html.Li([html.P([html.U("Set the distance between subsequences:"), "The distance between subsequences corresponds to an euclidean distance combined with a subseuquence normalization procedure. There is two normalization available:", html.Ul([html.Li(html.P([html.U("Z-normalization:"), " It removes deformations caused by amplitude and offset shifts."])),html.Li(html.P([html.U("LT-normalization:"), "It removes deformations caused by amplitude, offset and linear shifts. This normalization is well suited for time-series with a trend as it able to remove deformations induced by the trend at the scale of the subsequence. However if a motif is similar to an affine line it will not be detected. It is the default normalization."]))])]),
+                                                html.Li(html.P([html.U("Upload a time series:"), " You must drag and drop or select a file. The file should correspond to a univariate time series. It must be a one-column file in .txt or .csv format with samples separated with commas (\",\"). Once the file is uploaded, the signal will be displayed in the lower block. Each time the user uploads a new time series, all parameters of the dashboard are set to their default value."])),
+                                                html.Li(html.P([html.U("Set window length:"), " The window length corresponds to the subsequence length. It is an integer that specifies the number of samples within a subsequence. We recommend setting it to the length of the smallest expected motif or smaller. The length of motifs discovered will approximately range between 50% and 150% of the window length."])),
+                                                html.Li(html.P([html.U("Set the number of neighbors:"), " This parameter specifies the number of connections from a node to its nearest neighbors. A large number of neighbors helps connect similar subsequences. However, it slows down the running time. It is an integer, and we recommended setting it between 5 and 10."])),
+                                                html.Li([html.P([html.U("Set the distance between subsequences:"), " The distance between subsequences corresponds to a Euclidean distance combined with a subsequent normalization procedure. There are two normalizations available:", html.Ul([html.Li(html.P([html.U("Z-normalization:"), " It removes deformations caused by amplitude and offset shifts."])),html.Li(html.P([html.U("LT-normalization:"), " It removes deformations caused by amplitude, offset, and linear shifts. This normalization is well suited for time series with a trend as it can remove deformations induced by the trend at the scale of the subsequence. However, if a motif is similar to an affine line, it will not be detected. It is the default normalization."]))])]),
                                                     html.Div(
                                                         dbc.Card(
                                                                 [
-                                                                    dbc.CardImg(src=app.get_asset_url("transformations.pdf"), style={"max-width": "100%"}, top=True,className="img-fluid mx-auto d-block"),
+                                                                    dbc.CardImg(src=app.get_asset_url("transformations.png"), style={"max-width": "100%"}, top=True,className="img-fluid mx-auto d-block"),
                                                                     dbc.CardBody(
                                                                         html.P("Figure 2: Illustration of deformations", className="card-text",style={"text-align" : "center"})
                                                                     ),
@@ -221,14 +232,24 @@ app.layout = dbc.Container(
                                                     className= "d-flex justify-content-center align-items-center"
                                                     )
                                                 ]),
-                                                html.Li([html.P([html.U("Click on the \"Run\" button:")," It runs the algorithm to construct the graph. Depending on the length of the time series it may take some time for the algorithm to run. While it is running, a spinner is displayed next to the \"Run\" button. At the end of the execution, the message \"Graph construction successfully performed.\" will replace the spinner."])])
-                                            ])
+                                                html.Li([html.P([html.U("Click on the \"Run\" button:")," It runs the algorithm to construct the graph. The algorithm may take some time to run, depending on the time series length. While it is running, a spinner is displayed next to the \"Run\" button. At the end of the execution, the message \"Graph construction successfully performed.\" will replace the spinner."])])
+                                            ]),
+                                            html.P([html.U("Remark:"), " A toy time series is downloadable by clicking \"Download example\". The zip file contains an electrocardiogram of a patient experiencing premature ventricular contraction (ecg.csv) and a text file suggesting the graph parameters (readme.txt)."])
                                         ], 
                                         title="1. From time series to graph -- Upper block"
                                     ),
                                     dbc.AccordionItem(
                                         [
-                                            html.P("This block gives interactive control over the graph clustering algorithm. A cluster is a connected subgraph of the time series graph. Indeed, the time series graph is such that edges with small distances connect subsequences overlapping a motif. Therefore, motifs can be retrieved by searching for subgraphs whose edges have small distances. The persistent-based graph clustering algorithm is well suited to identify such subgraphs. At its core, the algorithm allocates birth and death dates to connected subgraphs. The birth date is the smallest distance within the subgraph, and the death date is the distance associated with the edge that connects the subgraph to another with an earlier birth date. The collection of birth and death dates offers a visual and informative summarization of the time series graph through the persistence diagram (The persistence of a subgraph is its lifespan). The persistent diagram is a scatter plot with birth on the x-axis and death on the y-axis. As depicted in Figure.3, the diagram helps to identify motifs from the rest of the time series. Indeed, subgraphs associated with motifs have early birth and late death, as each motif has several similar occurrences and differs from the rest of the time series. Therefore, subgraphs of motifs are located in the upper left corner of the persistent diagram. On the other hand, random subsequences have late birth and death; they are located at the right of the diagram. To identify the motif area, a threshold on the birth (birth cut) and a threshold on the persistence (persistence cut) threshold must be set."),
+                                            html.P("This block gives control over the graph clustering algorithm."),
+                                            html.P("The graph of a time series is such that subsequences of the same motif are connected with edges of small distances. Therefore, motifs can be retrieved by searching for connected subgraphs whose edges have small distances."),
+                                            html.P("The persistent-based graph clustering algorithm is well suited to identify such subgraphs. At its core, the algorithm allocates birth and death dates to connected subgraphs (The persistence of a subgraph is its lifespan). The collection of birth and death dates offers a visual and informative summarization of the time series called the persistence diagram. It is a scatter plot with birth on the x-axis and death on the y-axis. Each point represents a connected subgraph. As depicted in Figure 3, the diagram helps to identify motifs from irrelevant parts of the time series:"),
+                                            html.Ul([
+                                                html.Li("Motifs are located in the top left corner. They have early birth and late death."),
+                                                html.Li("Irrelevant parts of the time series are on the right side of the diagram."),
+                                                html.Li("The lower-left corner corresponds to motif subdivisions."),
+                                            ]),
+                                            html.P("To isolate the motif area, a threshold on the birth (vertical threshold: birth cut) and a threshold on the persistence (off-diagonal threshold: persistence cut) must be set."),
+
                                             html.Div(
                                                 dbc.Card(
                                                     [
@@ -241,16 +262,20 @@ app.layout = dbc.Container(
                                                 ),
                                                 className= "d-flex justify-content-center align-items-center"
                                             ),
-                                            html.P("Birth cut slider and persistent cut slider must be used to set the motif area. The button \"Automatic Cut\" on the upper right corner of the persistence diagram sets thresholds with a heuristic. The birth cut is set with the Otsu heuristic, and the persistence cut is set with the second-largest persistence gap. A detailed description of the heuristic can be found in [1]."),
-                                            html.P("In some cases, points on the persistent diagram concentrate on small areas, making the choice of thresholds hard. To leverage this issue, the profile of the distance measure can be modified using a sigmoid kernel controlled with two parameters. Both parameters help to spread or concentrate points over the persistence diagram and thus ease setting the thresholds. The first parameter controls the slope. A high slope enforces the distance to be minimal only for the most similar subsequences, and the distance between other subsequences is maximal (equal to 2). Conversely, a small slope leads to a distance identical to the Euclidean distance. The second parameter controls the offset. The kernelized distance remains small when the Euclidean distance is below the offset, and the slope strengthens this effect. The right figure displays the modified distance profile, and the sliders below control the slope and offset. The default slope and offset are set so that the kernelized distance matches the Euclidean distance. As a setting helper, the button \"Spread\" sets the slope and the offset such that births are, as much as possible, uniformly distributed on the x-axis."), 
-                                            html.P("The block's lower right section helps remove outliers from the motif occurrence sets. When activated, it removes occurrences whose length is lower or greater than a user-defined percentage of the average length observed within the motif occurrence set. In most cases, this cluster post-processing step is not necessary. By default, there is no post-processing."),
+                                            html.P(" "),
+                                            html.P("Birth cut slider and persistent cut slider must be used to isolate the motif area. The button \"Automatic Cut\" on the upper right corner of the persistence diagram sets thresholds with a heuristic. The birth cut is set with the Otsu heuristic, and the persistence cut is set with the second-largest persistence gap. A detailed description of the heuristic can be found in [1]."),
+
+                                            html.P("In some cases, motifs are sensitive to the persistence and birth thresholds. However, the threshold adjustment can be facilitated by emphasizing the visual interpretation of the persistence diagram. To that end, the distance function between subsequences is parametrized. The first parameter controls the slope of the distance, whereas the second controls its offset at the origin. Modifications of the distance parameters lead to modification in the persistence diagram, helping the threshold adjustment. The figure on the right of this block displays the modified distance profile, and the sliders below control the slope and offset. The default slope and offset are set so that the parametrized distance matches the Euclidean distance. As a setting helper, the button \"Spread\" sets the slope and the offset such that births are uniformly spread along the x-axis."), 
+
+                                            html.P("The lower right part of the block helps remove outliers from the motif occurrence sets. When activated, it removes occurrences whose length is lower or greater than a user-defined percentage of the average length observed within the motif occurrence set. In most cases, this cluster post-processing step is not necessary. By default, there is no post-processing."),
                                             html.P("Finally, once all parameters are set, click on \"Apply Change\", and the motifs will be displayed.")
                                         ], title="2. Graph clustering -- Middle-left block"
                                     ),
                                     dbc.AccordionItem(
                                         [
-                                          html.P([html.U("Motifs display -- Middle right block:"), " Once the clustering is done, motifs are displayed in the middle right blocks. The number of motifs displayed is at most three, and the displayed motifs are selected from the input form located above. By default, the first three motifs are displayed. All occurrences within a motif set are aligned through cross-correlation and shown in gray. The colored line corresponds to the average motif."]),
-                                          html.P([html.U("Time series display -- Lower block:")," Once the time series is uploaded, it is displayed in gray in the lower block. Once the clustering is done, the motifs are also shown. A unique color is attributed to each motif, matching the color in the motif display block. All motif occurrences are highlighted, and a dash vertical line indicates the start of an occurrence. The color transparency informs about the similarity between occurrences; the more transparent a color, the less similar the occurrence is to any other occurrence. It is possible to focus on (respectively remove) a motif by double-clicking (respectively one-clicking) on its legend. Zooming in (respectively zooming out) is also possible by clicking and dragging the desired area (double clicking on the display)."])  
+                                        html.P([html.U("Motifs display -- Middle right block:"), " Once the clustering is done, motifs are displayed in the middle right blocks. The number of motifs displayed is at most three, and the displayed motifs are selected from the input form located above. By default, the first three motifs are displayed. All occurrences within a motif set are aligned through cross-correlation and shown in gray. The colored line corresponds to the average motif."]),
+                                        html.P([html.U("Time series display -- Lower block:")," Once the time series is uploaded, it is displayed in gray in the lower block. Once the clustering is done, the motifs are also shown. A unique color is attributed to each motif, matching the color in the motif display block. All motif occurrences are highlighted, and a dash vertical line indicates the start of an occurrence. The color transparency informs about the similarity between occurrences; the more transparent a color, the less similar the occurrence is to any other occurrence. It is possible to focus on (respectively remove) a motif by double-clicking (respectively one-clicking) on its legend. Zooming in (respectively zooming out) is also possible by clicking and dragging the desired area (double clicking on the display)."]), 
+                                        html.P([html.U("Download motifs:"), " Motifs can be downloaded from the application as a json file. For each motif, there is a list compiling its occurrences. Each line corresponds to one of its occurrences; the first number corresponds to the occurrence starting sample, and the second corresponds to the occurrence ending sample."])
                                         ], 
                                         title="3. Signal and motifs display -- Middle-right & Lower blocks"
                                     ),
@@ -258,7 +283,7 @@ app.layout = dbc.Container(
                                 start_collapsed=True,
                             ),
                             html.P(" "),
-                            html.P("[1]  thibaut, germain ....")
+                            html.P("[1]  Germain, T., Truong, C., Oudre, L.: Persistence-based motif discovery in time series. Submitted to IEEE Transactions on Knowledge and Data Engineering, (2024).")
                             
                         ],
                         id="offcanvas",
@@ -271,18 +296,22 @@ app.layout = dbc.Container(
                 ])
             ]),
             dbc.Col([
+                dbc.Button("Download example", id="btn_download_example"),
+                dcc.Download(id="download_example")
+            ]),
+            dbc.Col([
                 dcc.Upload(
                     id='upload_data',
-                    children=html.Div(['Drag and Drop or ',html.U('Select Files')]),
+                    children=html.Div(['Drag and Drop or ',dbc.Button('Select Files',size="sm")]),
                     style={
                             'width': '100%',
-                            'height': '60px',
-                            'lineHeight': '60px',
-                            'borderWidth': '1px',
+                            'height': '10%',
+                            'lineHeight': '300%',
+                            'borderWidth': '1%',
                             'borderStyle': 'dashed',
-                            'borderRadius': '5px',
+                            'borderRadius': '0%',
                             'textAlign': 'center',
-                            'margin': '10px'
+                            'margin': '0%'
                         },
                 )
             ]),
@@ -290,13 +319,46 @@ app.layout = dbc.Container(
                 html.Div(id="upload_status")
             ]),
             dbc.Col([
-                dbc.Input(id="window_length",type = "number", placeholder="window length (n. samples)")
+                html.Div([
+                    dbc.Label(html.Strong("Subsequence length (n. samples)")),
+                    dbc.Input(id="window_length",type = "number", placeholder="subsequence length (n. samples)",min=0),
+                    dbc.Tooltip([
+                        html.Div("Subsequence length in number of samples."), 
+                        html.Ul([
+                            html.Li("Length of detected motifs are in between 50% and 150% of the subsequence length."),
+                            html.Li("Preferably, subsequence length is smaller than the motif length.")
+                        ],style={"textAlign": "left"}),
+                        
+                    ], target="window_length")
+                ])
+                
             ]),
             dbc.Col([
-                dbc.Input(id="n_neighbor",type = "number", placeholder="number of neighbors")
+                html.Div([
+                    dbc.Label(html.Strong("Number of neighbors")),
+                    dbc.Input(id="n_neighbor",type = "number", placeholder="number of neighbors",min=0,value=5),
+                    dbc.Tooltip([
+                        html.Div("Number of nearest neighbors for the graph construction."),
+                        html.Ul([
+                            html.Li("5 is recommended."),
+                        ],style={"textAlign": "left"}),
+
+                        
+                    ], target="n_neighbor")
+                ])
             ]),
             dbc.Col([
-                dbc.Select(id="normalization",options=[{"label": "LT-normalization", "value" : "LTNormalizedEuclidean"},{"label": "Z-normalization", "value" : "UnitEuclidean"}],value="LTNormalizedEuclidean")
+                html.Div([
+                    dbc.Label(html.Strong("Distance normalization")),
+                    dbc.Select(id="normalization",options=[{"label": "LT-normalization", "value" : "LTNormalizedEuclidean"},{"label": "Z-normalization", "value" : "UnitEuclidean"}],value="LTNormalizedEuclidean"),
+                    dbc.Tooltip([
+                        html.Div("Subsequences normalization before euclidean distance:"),
+                        html.Ul([
+                            html.Li("Z-normalization: Invariant to amplitude scaling & offset shift"),
+                            html.Li("LT-normalization: Invariant to amplitude scaling, offset shift & linear trend.")
+                        ],style={"textAlign": "left"})
+                    ], target="normalization")
+                ])
             ]),
             dbc.Col([
                 html.Div(dbc.Button("Run",id="run"),className="text-center"),
@@ -304,134 +366,209 @@ app.layout = dbc.Container(
             dbc.Col([
                 html.Div(dbc.Spinner(html.Div(id="neighbor_status"))),
             ]),
-        ],className="bg-light", align="center"),
+        ],className="bg-light", align="center",style={"padding" : "10px"}),
         dbc.Row([
             dbc.Col([
                 html.Div("Settings",style={"font-weight": "bold"}),
                 dbc.Row([
-                    dbc.Col(html.Div("Persistence diagram"),style = {"width" : "200px", "text-align" : "left"},width="auto"),
-                    dbc.Col(html.Div(dbc.Button("Spread",id="spread", size ="sm",color="secondary",outline=True)),style = {"width" : "70px", "text-align" : "center", "height" : "50px"},width="auto"), 
-                    dbc.Col(html.Div(dbc.Button("Automatic cut",id="automatic_cut", size ="sm",color="secondary",outline=True)),style = {"width" : "200px", "text-align" : "center", "height" : "50px"},width="auto"), 
-                    dbc.Col(html.Div("Distance settings"),style = {"text-align" : "left"}),
-                ]),
-                dbc.Row([
-                    dbc.Col(html.Div("Persitent cut", style={"writing-mode" : "vertical-rl", "transform" : "rotate(-180deg)"}),width = "auto", style = {"width" : "10px"}, align="center"),
-                    dbc.Col(dcc.Slider(0,2,marks=None,value= 0,vertical =True,id = "p_cut_slider", verticalHeight = 400),width = "auto", style = {"width" : "10px"}),
-                    dbc.Col([
-                        dcc.Graph(
-                            id = "persistent_diagram",
-                            figure = {
-                                "data" :[
-                                    dict(
-                                    type = "scatter",
-                                    x = [],
-                                    y = [],
-                                    mode = "markers"
-                                    ),
-                                    dict(
-                                    type = "scatter",
-                                    x = [0,2,2],
-                                    y = [0,2,0],
-                                    fill = "toself",
-                                    marker=dict(size=1,color = "black"),
-                                    hovertemplate='<extra></extra>',
-                                    ),
-
-                                ],
-                                "layout" : dict(
-                                    margin =dict(l=20,r=20,t=20,b=20),
-                                    xaxis = dict(range = [-0.05,2.05]),
-                                    yaxis = dict(range = [-0.05,2.05]),
-                                    height = 400,
-                                    width = 400,
-                                    showlegend = False,
-                                    shapes = [
-                                        dict(type = "line",
-                                            x0=0,
-                                            x1=0,
-                                            xref = "x",
-                                            y0=0,
-                                            y1=2,
-                                            yrel = "y",
-                                            line = dict(width = 1.5, color ='red' )
-                                            ),
-                                        dict(type = "line",
-                                            x0=0,
-                                            x1=2,
-                                            xref = "x",
-                                            y0=0,
-                                            y1=2,
-                                            yrel = "y",
-                                            line = dict(width = 1.5, color ='red' )
-                                            ),
-                                        dict(type = "line",
-                                            x0=0,
-                                            x1=2,
-                                            xref = "x",
-                                            y0=0,
-                                            y1=2,
-                                            yrel = "y",
-                                            line = dict(width = 1.5, color ='black' )
-                                            ),
-                                        dict(type = "line",
-                                            x0=0,
-                                            x1=2,
-                                            xref = "x",
-                                            y0=0,
-                                            y1=2,
-                                            yrel = "y",
-                                            line = dict(width = 1.5, color ='black' )
-                                            )
-                                    ]     
-                                ),
-                            },
-                        ),
-                        dbc.Row(dcc.Slider(0,2,marks=None,value =0, id="b_cut_slider"),style = {"width" : "400px", "height" : "10px"}),
-                        dbc.Row(html.Div("Birth cut"),style = {"width" : "400px", "text-align" : "center", "height" : "10px"}, align="center"),
-                    ],width = "auto",style = {"width" : "450px"}),
                     dbc.Col([
                         dbc.Row([
-                        dcc.Graph(
-                            id = "distance_plot",
-                            figure = {
-                                "data" : [
-                                    dict(type = "line",y = np.hstack((np.linspace(2,0,101)[:-1],np.linspace(0,2,100))),name = "Euclidean"),
-                                    dict(type = "line",y = np.hstack((np.linspace(2,0,101)[:-1],np.linspace(0,2,100))),name = "Tanh")
-                                ],
-                                "layout" : dict(
-                                    margin =dict(l=20,r=20,t=20,b=20),
-                                    height = 200,
-                                    yaxis = dict(range = [-0.05,2.05]), 
-                                    xaxis= dict(tickvals = [  0,  50, 100, 150, 200],ticktext =["2","1","0","1","2"]),
-                                    legend = dict(xanchor = "left",x = 0.01, yanchor ="bottom", y = 0.06)    
-                                ),
-                            },
-                        ),
-                        dbc.Col([
-                            html.Div("Slope"),
-                            html.Div("Offset")
-                        ],width = "auto"),
-                        dbc.Col([
-                            dcc.Slider(0.01,10,step =0.01,marks=None,value= 0.01,id = "alpha_slider"),
-                            dcc.Slider(0,2,marks=None,value =0, id="beta_slider")
+                            dbc.Col(
+                                html.Div([
+                                    "Persistence diagram ", 
+                                    dbc.Badge("i",color="dark",id="pers-diag-info"),
+                                    dbc.Tooltip([
+                                        html.Div([
+                                            dbc.Card(
+                                                [
+                                                    dbc.CardImg(src=app.get_asset_url("motif_persistent_diragram_presentation.png"), top=True,className="img-fluid mx-auto d-block"),
+                                                ],
+                                                style={"width": "100%"},
+                                            ),
+                                            ],className= "d-flex justify-content-center align-items-center",style={"width": "400px", "height" : "400px"}
+                                        )
+                                    ], target="pers-diag-info",class_name="custom-tooltip")
+                                ])
+                            ,style = {"text-align" : "left"},width="auto"),
+                            dbc.Col(
+                                [
+                                    html.Div(dbc.Button("Spread",id="spread", size ="sm",color="secondary",outline=True)),
+                                    dbc.Tooltip("Sets distance parameters such that births are uniformly spread along the birth axis.",target="spread")
+                                ]
+                                ,style = {"text-align" : "center"},width="auto"
+                            ), 
+                            dbc.Col(
+                                [
+                                    html.Div(dbc.Button("Automatic cut",id="automatic_cut", size ="sm",color="secondary",outline=True)),
+                                    dbc.Tooltip("Sets approximately persistence and birth cuts.", target="automatic_cut")
+                                ],style = {"text-align" : "center",},width="auto"
+                            ), 
                         ]),
+
+                        dbc.Row([
+                            dbc.Col(html.Div("Persitent cut", style={"writing-mode" : "vertical-rl", "transform" : "rotate(-180deg)"}),width = "auto", style = {"width" : "10px"}, align="center"),
+                            dbc.Col(dcc.Slider(0,2,marks=None,value= 0,vertical =True,id = "p_cut_slider", verticalHeight = 400),width = "auto", style = {"width" : "10px"}),
+                            dbc.Col([
+                                dcc.Graph(
+                                    id = "persistent_diagram",
+                                    figure = {
+                                        "data" :[
+                                            dict(
+                                            type = "scatter",
+                                            x = [],
+                                            y = [],
+                                            mode = "markers"
+                                            ),
+                                            dict(
+                                            type = "scatter",
+                                            x = [0,2,2],
+                                            y = [0,2,0],
+                                            fill = "toself",
+                                            marker=dict(size=1,color = "black"),
+                                            hovertemplate='<extra></extra>',
+                                            )
+                                        ],
+                                        "layout" : dict(
+                                            margin =dict(l=20,r=20,t=20,b=20),
+                                            xaxis = dict(range = [-0.0,2.0]),
+                                            yaxis = dict(range = [-0.0,2.0]),
+                                            height = 400,
+                                            showlegend = False,
+                                            shapes = [
+                                                dict(type = "line",
+                                                    x0=0,
+                                                    x1=0,
+                                                    xref = "x",
+                                                    y0=0,
+                                                    y1=2,
+                                                    yrel = "y",
+                                                    line = dict(width = 1.5, color ='red' )
+                                                    ),
+                                                dict(type = "line",
+                                                    x0=0,
+                                                    x1=2,
+                                                    xref = "x",
+                                                    y0=0,
+                                                    y1=2,
+                                                    yrel = "y",
+                                                    line = dict(width = 1.5, color ='red' )
+                                                    ),
+                                                dict(type = "line",
+                                                    x0=0,
+                                                    x1=2,
+                                                    xref = "x",
+                                                    y0=0,
+                                                    y1=2,
+                                                    yrel = "y",
+                                                    line = dict(width = 1.5, color ='black' )
+                                                    ),
+                                                dict(type = "line",
+                                                    x0=0,
+                                                    x1=2,
+                                                    xref = "x",
+                                                    y0=0,
+                                                    y1=2,
+                                                    yrel = "y",
+                                                    line = dict(width = 1.5, color ='black' )
+                                                    )
+                                            ]     
+                                        ),
+                                    },
+                                    #responsive = True,
+                                    style={'margin': '0'},
+                                ),
+                            ])
+                        ]),
+
+                        dbc.Row([
+                            dbc.Col([
+                                html.Div(dcc.Slider(0,2,marks=None,value =0, id="b_cut_slider"),style = {"height": "10px",'marginLeft': '40px'}),
+                                html.Div("Birth cut",style = {"text-align" : "center",'marginLeft': '40px'}),
+                            ])            
+                        ]),
+
+                    ],width = 6),
+                    dbc.Col([
+                        html.Div([
+                            "Distance settings ",
+                            dbc.Badge("i",color="dark",id="dist-info"),
+                            dbc.Tooltip(
+                                [
+                                    html.Div("Settings to modify the distance's slope and x-axis offset. It modifies the persistence diagram layout and facilitates setting persistence & birth cuts.")
+                                ], 
+                                target="dist-info")
+                        ],style = {"text-align" : "left"}),
+                        dbc.Row([
+                            dcc.Graph(
+                                id = "distance_plot",
+                                figure = {
+                                    "data" : [
+                                        dict(type = "line",y = np.hstack((np.linspace(2,0,101)[:-1],np.linspace(0,2,100))),name = "Euclidean"),
+                                        dict(type = "line",y = np.hstack((np.linspace(2,0,101)[:-1],np.linspace(0,2,100))),name = "Tanh")
+                                    ],
+                                    "layout" : dict(
+                                        margin =dict(l=20,r=20,t=20,b=20),
+                                        height = 200,
+                                        yaxis = dict(range = [-0.05,2.05]), 
+                                        xaxis= dict(tickvals = [  0,  50, 100, 150, 200],ticktext =["2","1","0","1","2"]),
+                                        legend = dict(xanchor = "left",x = 0.01, yanchor ="bottom", y = 0.06)    
+                                    ),
+                                },
+                            
+                            ),
+                        ]),
+                        dbc.Row([
+                            dbc.Col([
+                                html.Div("Slope"),
+                                html.Div("Offset")
+                            ],width = "auto"),
+                            dbc.Col([
+                                dcc.Slider(0.01,10,step =0.01,marks=None,value= 0.01,id = "alpha_slider"),
+                                dcc.Slider(0,2,marks=None,value =0, id="beta_slider")
+                            ]),
                         ]),
                         html.Hr(),
-                        dcc.Checklist([" Remove outliers"], id = "Remove_outlier"),
                         dbc.Row([
-                            dbc.Col(html.Div("Threshold"),width = 6),
-                            dbc.Col(dcc.Dropdown([f"{i}%" for i in range(1,100)], "25%",id="threshold_outlier"),width=6)
-                        ],align="center"),
+                            dbc.Col(html.Div(dcc.Checklist([""], id = "Remove_outlier")),width="auto",style={"width" : "10px"}),
+                            dbc.Col(
+                                html.Div([
+                                    "Remove outliers ",
+                                    dbc.Badge("i",color="dark",id="outlier-info"),
+                                    dbc.Tooltip(
+                                        [
+                                            html.Div("Removes occurrences within motif sets whose length is under/over 25% of the average length.")
+                                        ],
+                                        target="outlier-info")
+                                ],style = {"text-align" : "left"})
+                            )
+                            
+                        ]),
+                        
+                        #dbc.Row([
+                        #    dbc.Col(html.Div("Threshold"),width = 6),
+                        #    dbc.Col(dcc.Dropdown([f"{i}%" for i in range(1,100)], "25%",id="threshold_outlier"),width=6)
+                        #],align="center"),
                         html.Hr(),
                         dbc.Row([
                             html.Div("",style={"height" : "10px"}),
                             dbc.Col(html.Div(dbc.Button("Apply change",id="apply_change",size="sm"),className="text-center"))
-                    ]),
-                    ]),
-                        ])
+                        ]),
+                    ],width=6,style={"height" : "100%"}),
+                ]),
             ],width = 6, class_name="border border-dark rounded"),
             dbc.Col([
-                html.Div("Motifs display",style={"font-weight": "bold"}),
+                html.Div([
+                    "Motifs display ",
+                    dbc.Badge("i",color="dark",id="motif-info"),
+                    dbc.Tooltip([
+                        html.Div("Display motifs isolated with the persistence diagram."),
+                        html.Ul([
+                            html.Li("Maximum 3 motifs displayed"), 
+                            html.Li("Motif selection from the drowpdon menu below"),
+                            html.Li("Motifs' occurences in gray and average shapes in colors"),
+                        ],style={'textAlign': 'left'}),
+                    ], target="motif-info"),                
+                ],style={"font-weight": "bold"}),
                 dbc.Row([
                     dbc.Col([
                     dcc.Dropdown(["Motif 1"],value="Motif 1",multi=True,id="motif_selection"),
@@ -450,12 +587,32 @@ app.layout = dbc.Container(
                             }
                         )
                     )
-                ],width = 12),
+                    ],width = 12),
                 ])
             ],width = 6, class_name="border border-dark rounded"),
         ]),
         dbc.Row([
-            html.Div("Signal display",style={"font-weight": "bold"}),
+            dbc.Col([
+                html.Div([
+                    "Signal display ",
+                    dbc.Badge("i",color="dark",id="signal-info"),
+                    dbc.Tooltip([
+                        "Displays the signal and the motif sets.",
+                        html.Ul([
+                            html.Li("Motifs are in colors."), 
+                            html.Li("Color transparency indicates occurence similarity within motif sets. (lighter less similar.)"),
+                            html.Li("Vertical dashed lines indicate occurences' starts.")
+                        ],style = {"textAlgin" : "left"})
+                    ],target="signal-info"),
+                    
+                ],style={"font-weight": "bold"}),
+            ],width="auto"),
+            dbc.Col([
+                html.Div([
+                    dbc.Button("Download motifs",id="btn_download_motifs",size="sm",style={"margin" :"2px"}),
+                    dcc.Download(id="download_motifs")
+                ])   
+            ],width="auto"),
             dcc.Graph(
                 id="signal_plot",
                 figure=dict(
@@ -466,7 +623,7 @@ app.layout = dbc.Container(
                 )
             
             )
-        ],class_name="border border-dark rounded"),
+        ],class_name="border border-dark rounded",style={"height": "40vh"}),
     ]),
     fluid = True,
 )
@@ -485,7 +642,6 @@ def toggle_offcanvas(n1,is_open):
     Output(component_id="signal_store", component_property="data"),
     Output(component_id="upload_status", component_property="children"),
     Output(component_id="Remove_outlier",component_property="value"),
-    Output(component_id="threshold_outlier",component_property="value"),
     Input(component_id="upload_data",component_property="contents"),
     Input(component_id="upload_data",component_property="filename"),
 )
@@ -505,7 +661,7 @@ def upload_data(content,filename):
         return None, "There was an error processing this file."
     signal = df.values[:,-1].tolist()
     json_signal = json.dumps(signal)
-    return json_signal,f"{filename} uploaded",[],"25%"
+    return json_signal,f"{filename} uploaded",[]
 
 @app.callback(
         Output(component_id="mst_store", component_property="data"),
@@ -513,14 +669,13 @@ def upload_data(content,filename):
         Output(component_id="persistence_store", component_property="data"),
         Output(component_id="neighbor_status", component_property="children"),
         Input(component_id="run", component_property="n_clicks"),
-        Input(component_id="upload_data",component_property="filename"),
         State(component_id="window_length", component_property="value"),
         State(component_id="n_neighbor", component_property="value"),
         State(component_id="normalization", component_property="value"),
         State(component_id="signal_store", component_property="data")
 )
-def store_mst_mp(n_clicks,filename,wlen,n_neighbor,normalization,json_signal):
-    if (n_clicks is None)*(filename is None): 
+def store_mst_mp(n_clicks,wlen,n_neighbor,normalization,json_signal):
+    if json_signal is None: 
         raise PreventUpdate
     if ctx.triggered_id == "run":
         signal = np.array(json.loads(json_signal))
@@ -635,6 +790,7 @@ def update_distance(alpha,beta):
     Output(component_id="motif_selection",component_property="options"),
     Output(component_id="motif_selection",component_property="value"),
     Output(component_id="motif_plot_store", component_property="data"),
+    Output(component_id="motif_store", component_property="data"),
     Input(component_id="apply_change", component_property="n_clicks"),
     Input(component_id="signal_store",component_property="data"),
     Input(component_id="upload_data",component_property="filename"),
@@ -643,13 +799,12 @@ def update_distance(alpha,beta):
     State(component_id = "alpha_slider", component_property = "value"),
     State(component_id = "beta_slider", component_property = "value"),
     State(component_id="Remove_outlier",component_property="value"),
-    State(component_id="threshold_outlier",component_property="value"),
     State(component_id="mst_store", component_property="data"),
     State(component_id="mp_store",component_property="data"),
     State(component_id="persistence_store", component_property="data"),
     State(component_id="window_length", component_property="value")
 )
-def update_signal_motif_plots(n_clicks,json_signal,filename,b_cut,p_cut,alpha,beta,remove_outlier,outlier_threshold,json_mst,json_mp,json_persistence,wlen): 
+def update_signal_motif_plots(n_clicks,json_signal,filename,b_cut,p_cut,alpha,beta,remove_outlier,json_mst,json_mp,json_persistence,wlen): 
     if json_signal is None: 
         raise PreventUpdate
     
@@ -661,21 +816,28 @@ def update_signal_motif_plots(n_clicks,json_signal,filename,b_cut,p_cut,alpha,be
     patch_signal = display_signal(signal)
     options = ["Motif 1"]
     s_option = None
+    json_motif_plot = None  
     json_motif = None  
+
     if ctx.triggered_id != "upload_data":
         mst = np.array(json.loads(json_mst))
         mp = np.array(json.loads(json_mp))
         persistence = np.array(json.loads(json_persistence))
-        pred,birth = fit_on_submit(mst,mp,persistence,wlen,p_cut,b_cut,alpha,beta,remove_outlier,int(outlier_threshold[:-1]))
+        pred,birth = fit_on_submit(mst,mp,persistence,wlen,p_cut,b_cut,alpha,beta,remove_outlier,0.25)
+    
         patch_signal = update_signal_figure(signal,pred,birth)
         if not pred is None:
             options = [f"Motif {i+1}" for i in range(len(pred))]
             s_option = options[:min(3,len(options))]
-            motif_plots = get_motif_plots(signal,pred,wlen,remove_outlier,float(outlier_threshold[:-1])/100.)
-            json_motif = json.dumps(motif_plots)
-        
-        
-    return patch_signal,options,s_option,json_motif
+            motif_plots = get_motif_plots(signal,pred,wlen,remove_outlier,0.25)
+            json_motif_plot = json.dumps(motif_plots)
+
+            dct = {}
+            for i,arr in enumerate(pred): 
+                dct[f"motif {i+1}"] = arr.tolist()
+            json_motif = json.dumps(dct)
+         
+    return patch_signal,options,s_option,json_motif_plot,json_motif
 
 @app.callback(
     Output(component_id="motif_plot",component_property="figure"),
@@ -711,6 +873,27 @@ def update_motif_plot(value,filename,data):
         patch["data"] = []
         return patch
 
+
+@app.callback(
+    Output(component_id="download_example",component_property="data"),
+    Input(component_id="btn_download_example",component_property="n_clicks")
+)
+def dowmload_example(n_clicks): 
+    if n_clicks is None: 
+        raise PreventUpdate
+    return dcc.send_file("./example.zip","example.zip")
+
+@app.callback(
+    Output(component_id="download_motifs",component_property="data"),
+    Input(component_id="btn_download_motifs",component_property="n_clicks"),
+    State(component_id="motif_store", component_property="data"),
+)
+def dowmload_motifs(n_clicks,json_motifs): 
+    if (n_clicks is None)*(json_motifs is None): 
+        raise PreventUpdate
+    dct = json.loads(json_motifs)
+    dct["readme"] = "Each motif has its own list. Each line of a list corresponds to an occurence of the motif. The first number corresponds to the occurence starting sample and the second corresponds to the occurence ending sample."
+    return dict(content=json.dumps(dct),filename="motifs.json")
 
 
 if __name__ == '__main__':

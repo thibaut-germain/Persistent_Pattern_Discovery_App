@@ -1,0 +1,31 @@
+/* Rotate the slider handle and tick marks */
+.custom-slider .rc-slider-handle {
+    transform: rotate(90deg);
+}
+
+.custom-slider .rc-slider-mark {
+    transform: rotate(90deg);
+}
+
+.custom-slider .rc-slider-step {
+    height: 100%;
+}
+
+/* Set the height of the slider based on a percentage of the parent container's height */
+.slider-container {
+    height: 80%; /* Change this value as needed */
+}
+
+/* Rotate the entire slider to make it vertical */
+.custom-slider .rc-slider {
+    transform: rotate(-90deg);
+}
+
+.custom-tooltip .tooltip-inner {
+    width: 300px;
+    padding: .25rem .5rem;
+    color: #fff;
+    text-align: center;
+    background-color: transparent;
+    border-radius: .25rem;
+}
