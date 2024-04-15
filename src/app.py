@@ -167,6 +167,7 @@ def update_motif_figure(trace_lst):
 
 app = Dash(__name__,external_stylesheets=[dbc.themes.FLATLY])
 server = app.server
+app.title = "Percistence-based Motif Discovey in Time Series"
 
 app.layout = dbc.Container(
     
@@ -283,7 +284,16 @@ app.layout = dbc.Container(
                                 start_collapsed=True,
                             ),
                             html.P(" "),
-                            html.P("[1]  Germain, T., Truong, C., Oudre, L.: Persistence-based motif discovery in time series. Submitted to IEEE Transactions on Knowledge and Data Engineering, (2024).")
+                            html.P("[1]  Germain, T., Truong, C., Oudre, L.: Persistence-based motif discovery in time series. Submitted to IEEE Transactions on Knowledge and Data Engineering, (2024)."),
+                            html.P(" "), 
+                            html.P(html.H4("Contributors")),
+                            html.Ul([
+                                html.Li("Thibaut Germain, (Centre Borelli, ENS Paris Saclay)"),
+                                html.Li("Charles Truong, (Centre Borelli, ENS Paris Saclay)"),
+                                html.Li("Laurent Oudre, (Centre Borelli, ENS Paris Saclay)")
+                            ]),
+                            html.P("Emails: {thibaut.germain, charles.truong, laurent.oudre}@ens-paris-saclay.fr"),
+                            html.P("Primary contact: Thibaut Germain")
                             
                         ],
                         id="offcanvas",
@@ -897,5 +907,5 @@ def dowmload_motifs(n_clicks,json_motifs):
 
 
 if __name__ == '__main__':
-    app.run_server(debug=True)
+    app.run_server(debug=False)
 
