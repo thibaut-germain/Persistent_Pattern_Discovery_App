@@ -10,6 +10,7 @@
 <div align="center">
 
 [![Button Icon]](https://persistent-pattern-discovery.onrender.com)
+
 </div>
 
 
@@ -32,16 +33,24 @@ Time series analysis based on recurrent patterns, also called motifs, has emerge
   </figcaption>
 </p>
 
-### Application GUI
+### Application User Interface
 
 <p align="center">
   <img src="app_screenshot.png" alt="drawing" width="1000"/>
   <figcaption>
-    Workflow of the PersistentPattern algorithm (PEPA). Step 1, From time series to graph: Transforms a time series into a graph where nodes are subsequences and edges are weighted with a distance between subsequences. 
-    Step 2, Graph clustering with persistent homology:  Identifies clusters representing motifs from the persistence diagram and separates them from irrelevant parts of the time series with two thresholds (red lines).
-    Step 3: From clusters to motif sets: Merges temporally adjacent subsequences in each cluster to form the variable length motifs.
+   <ul>
+     <li>Upper block (red): Associated with step 1, the user uploads a time series, sets parameters related to the graph construction, and runs it.</li>
+     <li>Middle left block (green): Associated with step 2, it is the core interactive component of the system. The user can modify the distance function and set the threshold from the resulting persistence diagram.</li>
+     <li>Middle right & lower blocks (blue): Associated with step 3, the lower block displays the time series and highlights the discovered motifs. The middle-right block displays motifs individually.</li>
+   </ul>
   </figcaption>
 </p>
+
+<div align="center">
+
+[![Button Icon]](https://persistent-pattern-discovery.onrender.com)
+
+</div>
 
 
 ## Functionalities
