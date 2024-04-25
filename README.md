@@ -10,6 +10,23 @@
 ## Abstract
 Time series analysis based on recurrent patterns, also called motifs, has emerged as a powerful approach in various domains. However, uncovering recurrent patterns poses challenges and usually requires expert knowledge. This paper introduces an interactive version of the PersistentPattern algorithm (PEPA), which addresses these challenges by leveraging topological data analysis. PEPA provides a visually intuitive representation of time series, facilitating motif selection without needing expert knowledge. Our work aims to empower data mining and machine learning researchers seeking deeper insights into time series. We provide an overview of the PEPA algorithm and detail its interactive version, concluding with a demonstration of abnormal heartbeat detection.
 
+## Application & algortihm overview 
+
+### Workflow of the PersistentPattern algorithm (PEPA)
+
+<p align="center">
+  <img src="app_screenshot.pdf" alt="drawing" width="1000"/>
+  <figcaption>
+    <ul>
+      <li>Step 1, From time series to graph: Transforms a time series into a graph where nodes are subsequences and edges are weighted with a distance between subsequences. </li>
+      <li>Step 2, Graph clustering with persistent homology:  Identifies clusters representing motifs from the persistence diagram and separates them from irrelevant parts of the time series with two thresholds (red lines).</li>
+      <li>Step 3: From clusters to motif sets: Merges temporally adjacent subsequences in each cluster to form the variable length motifs.</li>
+    </ul>
+  </figcaption>
+</p>
+
+### Application GUI
+
 <p align="center">
   <img src="src/assets/method_overview.png" alt="drawing" width="1000"/>
   <figcaption>
