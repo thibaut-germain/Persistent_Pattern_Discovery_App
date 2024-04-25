@@ -9,7 +9,7 @@
 
 <div align="center">
 
-[Go to application](https://persistent-pattern-discovery.onrender.com)
+[![Button Icon]](https://persistent-pattern-discovery.onrender.com)
 </div>
 
 
@@ -73,3 +73,6 @@ conda create --name perspa --file requirements.txt
 
 If you use this work, please cite:
 
+<!---------------------------------------------------------------------------->
+
+[Button Icon]: https://img.shields.io/badge/Go_to_application_website-37a779?style=for-the-badge
