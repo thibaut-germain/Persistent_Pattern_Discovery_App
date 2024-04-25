@@ -54,22 +54,17 @@ Time series analysis based on recurrent patterns, also called motifs, has emerge
 
 
 ## Functionalities
-- Paper's experimental results can be found in the jupyter notebook [exp_results_paper.ipynb](https://github.com/thibaut-germain/Persistent-Pattern-Discovery/exp_results_paper.ipynb)
-- Paper's illustration can be found in the jupyter notebook [paper_illustration.ipynb](https://github.com/thibaut-germain/Persistent-Pattern-Discovery/paper_illustration.ipynb)
-- To run an experiment, use the following command from the root folder:
+
+The application can be ran locally with the following command from the root folder
   ```(bash)
-  python experiment/<foldername>/script_<foldername>.py
+  python src/app.py
   ```
-  If all experiments are re-run, the new results can be displayed with thejupyter notebook [exp_results_paper.ipynb](https://github.com/thibaut-germain/Persistent-Pattern-Discovery/exp_results_paper.ipynb)
+Go to the http address given in your terminal by the equivalent message: ```Dash is running on http://127.0.0.1:8050/```.
 
 
 ## Prerequisites
 
-1.  download and unzip the datasets at the root folder from the following archive:
 
-```(bash) 
-https://drive.google.com/file/d/1tfOXKbk7rhAqF4jzuMkrgklcYU3qtWzY/view?usp=sharing
-```
 2. All python packages needed are listed in [requirements.txt](https://github.com/thibaut-germain/Persistent-Pattern-Discovery/requirements.txt) file and can be installed simply using the pip command: 
 
 ```(bash) 
