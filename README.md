@@ -15,7 +15,7 @@ Time series analysis based on recurrent patterns, also called motifs, has emerge
 ### Workflow of the PersistentPattern algorithm (PEPA)
 
 <p align="center">
-  <img src="app_screenshot.pdf" alt="drawing" width="1000"/>
+  <img src="src/assets/method_overview.png" alt="drawing" width="1000"/>
   <figcaption>
     <ul>
       <li>Step 1, From time series to graph: Transforms a time series into a graph where nodes are subsequences and edges are weighted with a distance between subsequences. </li>
@@ -28,7 +28,7 @@ Time series analysis based on recurrent patterns, also called motifs, has emerge
 ### Application GUI
 
 <p align="center">
-  <img src="src/assets/method_overview.png" alt="drawing" width="1000"/>
+  <img src="app_screenshot.png" alt="drawing" width="1000"/>
   <figcaption>
     Workflow of the PersistentPattern algorithm (PEPA). Step 1, From time series to graph: Transforms a time series into a graph where nodes are subsequences and edges are weighted with a distance between subsequences. 
     Step 2, Graph clustering with persistent homology:  Identifies clusters representing motifs from the persistence diagram and separates them from irrelevant parts of the time series with two thresholds (red lines).
