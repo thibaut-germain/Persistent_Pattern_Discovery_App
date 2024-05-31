@@ -167,7 +167,7 @@ def update_motif_figure(trace_lst):
 
 app = Dash(__name__,external_stylesheets=[dbc.themes.FLATLY])
 server = app.server
-app.title = "Percistence-based Motif Discovey in Time Series"
+app.title = "Persistence-based Motif Discovey in Time Series"
 
 app.layout = dbc.Container(
     
